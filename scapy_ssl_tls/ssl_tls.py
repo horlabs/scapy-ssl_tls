@@ -7,8 +7,9 @@ from scapy.fields import *
 from scapy.layers.inet import TCP, UDP
 from scapy.layers import x509
 
+import os
 
-import ssl_tls_registry as registry
+import scapy_ssl_tls.ssl_tls_registry as registry
 
 
 class BLenField(LenField):
@@ -241,7 +242,7 @@ class TypedPacketListField(PacketListField):
 class EnumStruct(object):
 
     def __init__(self, entries):
-        entries = dict((v.replace(' ', '_').upper(), k) for k, v in entries.iteritems())
+        entries = dict((v.replace(' ', '_').upper(), k) for k, v in entries.items())
         self.__dict__.update(entries)
 
 TLS_VERSIONS = {
@@ -1314,7 +1315,7 @@ class TLSSocket(object):
 
 # entry class
 class SSL(Packet):
-    __slots__ = ["tls_ctx", "_origin", "guessed_next_layer", "fields_desc"]
+    __slots__ = ["tls_ctx", "_origin", "guessed_next_layer"]
     """
     COMPOUND CLASS for SSL
     """
@@ -1337,7 +1338,7 @@ class SSL(Packet):
         # figure out if we're UDP or TCP
         if self.underlayer is not None and self.underlayer.haslayer(UDP):
             self.guessed_next_layer = DTLSRecord
-        elif ord(raw_bytes[0]) & 0x80:
+        elif raw_bytes[0] & 0x80:
             self.guessed_next_layer = SSLv2Record
         else:
             self.guessed_next_layer = TLSRecord
@@ -1442,7 +1443,7 @@ def to_raw(pkt, tls_ctx, include_record=True, compress_hook=None, pre_encrypt_ho
     comp_method = ctx.compression
 
     content_type, data = None, None
-    for tls_proto, handler in cleartext_handler.iteritems():
+    for tls_proto, handler in cleartext_handler.items():
         if pkt.haslayer(tls_proto):
             content_type, data = handler(pkt[tls_proto], tls_ctx)
             break

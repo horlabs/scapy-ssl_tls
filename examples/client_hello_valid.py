@@ -2,7 +2,6 @@
 # -*- coding: UTF-8 -*-
 # Author : tintinweb@oststrom.com <github.com/tintinweb>
 
-from __future__ import print_function
 import sys
 try:
     import scapy.all as scapy
@@ -37,7 +36,7 @@ if __name__ == "__main__":
     p.show()
 
     print ("sending TLS payload")
-    s.sendall(str(p))
+    s.sendall(str(p).encode())
     resp = s.recv(1024 * 8)
     print ("received, %s" % repr(resp))
     SSL(resp).show()
