@@ -641,7 +641,6 @@ TLS Session Context:
                 verify_data = [data]
 
             if self.negotiated.version == tls.TLSVersion.TLS_1_2:
-                print(self.prf.digest.new(b"".join(verify_data)).digest())
                 prf_verify_data = self.prf.get_bytes(self.master_secret, label,
                                                      self.prf.digest.new(b"".join(verify_data)).digest(),
                                                      num_bytes=12)
@@ -751,7 +750,6 @@ class TLSPRF(object):
 
     def _get_bytes(self, digest, key, label, random, num_bytes):
         bytes_ = b""
-        print(key)
         block = HMAC.new(key=key, msg=label.encode()+random, digestmod=digest).digest()
         while len(bytes_) < num_bytes:
             bytes_ += HMAC.new(key=key, msg=block+label.encode()+random, digestmod=digest).digest()

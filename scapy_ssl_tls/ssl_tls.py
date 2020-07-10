@@ -441,6 +441,9 @@ class TLSRecord(StackedLenPacket):
         """ Sense for ciphertext
         """
         cls = StackedLenPacket.guess_payload_class(self, payload)
+        # TODO: Sometimes this fails with:
+        #  "TypeError: slice indices must be integers or None or have an __index__ method"
+        #  needs more investigation
         p = cls(payload, _internal=1, _underlayer=self)
         if p.haslayer(TLSHandshakes) and len(p[TLSHandshakes].handshakes) > 0:
             p = p[TLSHandshakes].handshakes[0]
@@ -1406,13 +1409,15 @@ class SSL(Packet):
         # TLSFinished, encrypted
         if record.haslayer(TLSRecord) and record[TLSRecord].content_type == TLSContentType.HANDSHAKE \
                 and record.haslayer(TLSCiphertext):
-            encrypted_payload = record.payload.build()
+            encrypted_payload = record[TLSCiphertext].data
             decrypted_type = TLSHandshakes
         # Do not attempt to decrypt cleartext Alerts and CCS
         elif record.haslayer(TLSAlert) and record.length != 0x2:
-            encrypted_payload = record.payload
+            encrypted_payload = record[TLSAlert].build()
             decrypted_type = TLSAlert
         elif record.haslayer(TLSChangeCipherSpec) and record.length != 0x1:
+            record.show()
+            raise NotImplementedError("Not implemented yet for python3")
             encrypted_payload = record.payload
             decrypted_type = TLSChangeCipherSpec
         # Application data
