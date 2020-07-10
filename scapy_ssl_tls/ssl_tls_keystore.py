@@ -82,7 +82,7 @@ def str_to_int(str_):
 
 
 def ansi_str_to_point(str_):
-    if not str_.startswith("\x04"):
+    if not str_.startswith(b"\x04"):
         raise ValueError("ANSI octet string missing point prefix (0x04)")
     str_ = str_[1:]
     if len(str_) % 2 != 0:
@@ -92,7 +92,7 @@ def ansi_str_to_point(str_):
 
 
 def point_to_ansi_str(point):
-    return "\x04%s%s" % (int_to_str(point.x), int_to_str(point.y))
+    return b"\x04" + int_to_str(point.x) + int_to_str(point.y)
 
 
 def tls_group_to_keystore(named_group_id, point_str):

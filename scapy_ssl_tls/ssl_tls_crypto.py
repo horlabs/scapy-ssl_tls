@@ -13,9 +13,9 @@ import warnings
 
 import math
 
-import pkcs7
-import ssl_tls as tls
-import ssl_tls_keystore as tlsk
+from . import pkcs7
+from . import ssl_tls as tls
+from . import ssl_tls_keystore as tlsk
 import tinyec.ec as ec
 import tinyec.registry as ec_reg
 
@@ -630,21 +630,24 @@ TLS Session Context:
                 for handshake in self._walk_handshake_msgs():
                     if handshake.haslayer(tls.TLSFinished):
                         # Special case of encrypted handshake. Remove crypto material to compute verify_data
-                        verify_data.append("%s%s%s" % (chr(handshake.type), struct.pack(">I", handshake.length)[1:],
+                        verify_data.append("%s%s%s" % (chr(handshake.type), struct.pack(">I", handshake.length)[1:], # TODO
                                                        handshake[tls.TLSFinished].data))
                     else:
-                        verify_data.append(str(handshake))
+                        if b"b'\\x" in handshake.build() or b'b"\\x' in handshake.build(): # TODO: Remove this, only for debugging purposes
+                            handshake.build()
+                            raise ValueError("bytestring as string content")
+                        verify_data.append(handshake.build())
             else:
                 verify_data = [data]
 
             if self.negotiated.version == tls.TLSVersion.TLS_1_2:
+                print(self.prf.digest.new(b"".join(verify_data)).digest())
                 prf_verify_data = self.prf.get_bytes(self.master_secret, label,
-                                                     self.prf.digest.new("".join(verify_data)).digest(),
+                                                     self.prf.digest.new(b"".join(verify_data)).digest(),
                                                      num_bytes=12)
             else:
                 prf_verify_data = self.prf.get_bytes(self.master_secret, label,
-                                                     "%s%s" % (MD5.new("".join(verify_data)).digest(),
-                                                               SHA.new("".join(verify_data)).digest()),
+                                                     MD5.new(b"".join(verify_data)).digest() + SHA.new(b"".join(verify_data)).digest(),
                                                      num_bytes=12)
         return prf_verify_data
 
@@ -747,10 +750,11 @@ class TLSPRF(object):
         return bytes_
 
     def _get_bytes(self, digest, key, label, random, num_bytes):
-        bytes_ = ""
-        block = HMAC.new(key=key, msg="%s%s" % (label, random), digestmod=digest).digest()
+        bytes_ = b""
+        print(key)
+        block = HMAC.new(key=key, msg=label.encode()+random, digestmod=digest).digest()
         while len(bytes_) < num_bytes:
-            bytes_ += HMAC.new(key=key, msg="%s%s%s" % (block, label, random), digestmod=digest).digest()
+            bytes_ += HMAC.new(key=key, msg=block+label.encode()+random, digestmod=digest).digest()
             block = HMAC.new(key=key, msg=block, digestmod=digest).digest()
         return bytes_[:num_bytes]
 
@@ -1030,7 +1034,7 @@ class CBCCryptoContext(CryptoContext):
     def encrypt(self, crypto_container):
         if self.tls_ctx.requires_iv:
             self.__init_ciphers()
-        ciphertext = self.enc_cipher.encrypt(str(crypto_container))
+        ciphertext = self.enc_cipher.encrypt(crypto_container.to_bytes())
         self.ctx.sequence += 1
         return ciphertext
 
@@ -1066,8 +1070,8 @@ class EAEADCryptoContext(CryptoContext):
     def encrypt(self, crypto_container):
         self.__init_ciphers(self.get_nonce())
         self.enc_cipher.update(crypto_container.aead)
-        ciphertext, mac = self.enc_cipher.encrypt_and_digest(str(crypto_container))
-        bytes_ = "%s%s%s" % (struct.pack("!Q", self.ctx.nonce), ciphertext, mac)
+        ciphertext, mac = self.enc_cipher.encrypt_and_digest(crypto_container.to_bytes())
+        bytes_ = struct.pack("!Q", self.ctx.nonce) + ciphertext + mac
         self.ctx.nonce += 1
         self.ctx.sequence += 1
         return bytes_
@@ -1191,7 +1195,10 @@ class StreamCryptoContainer(CryptoContainer):
         self.mac = self.digest.digest()
 
     def __str__(self):
-        return "%s%s" % (self.crypto_data.data, self.mac)
+        return "%s%s" % (self.crypto_data.data, self.mac) # TODO: Broken!
+
+    def to_bytes(self):
+        return self.crypto_data.data + self.mac
 
 
 class CBCCryptoContainer(CryptoContainer):
@@ -1204,7 +1211,7 @@ class CBCCryptoContainer(CryptoContainer):
         # CBC mode
         self.__mac()
         self.__pad()
-        self.padding_len = chr(len(self.padding))
+        self.padding_len = bytes([len(self.padding)])
 
     @classmethod
     def from_context(cls, tls_ctx, ctx, crypto_data):
@@ -1224,17 +1231,20 @@ class CBCCryptoContainer(CryptoContainer):
         content_type_ = struct.pack("!B", self.crypto_data.content_type)
         version_ = struct.pack("!H", self.crypto_data.version)
         len_ = struct.pack("!H", self.crypto_data.data_len)
-        self.digest.update("%s%s%s%s%s" % (sequence_, content_type_, version_, len_, self.crypto_data.data))
+        self.digest.update(sequence_ + content_type_ + version_ + len_ + self.crypto_data.data)
         self.mac = self.digest.digest()
 
     def __pad(self):
         # "\xff" is a dummy trailing byte, to increase the length of imput
         # data by one byte. Any byte could do. This is to account for the
         # trailing padding_length byte in the RFC
-        self.padding = self.pkcs7.get_padding("%s%s\xff" % (self.crypto_data.data, self.mac))
+        self.padding = self.pkcs7.get_padding(self.crypto_data.data + self.mac + b"\xff")
 
     def __str__(self):
-        return "%s%s%s%s%s" % (self.explicit_iv, self.crypto_data.data, self.mac, self.padding, self.padding_len)
+        return "%s%s%s%s%s" % (self.explicit_iv, self.crypto_data.data, self.mac, self.padding, self.padding_len) # TODO: Broken
+
+    def to_bytes(self):
+        return self.explicit_iv + self.crypto_data.data + self.mac + self.padding + self.padding_len
 
 
 class EAEADCryptoContainer(CryptoContainer):
@@ -1257,10 +1267,13 @@ class EAEADCryptoContainer(CryptoContainer):
         content_type_ = struct.pack("!B", self.crypto_data.content_type)
         version_ = struct.pack("!H", self.crypto_data.version)
         len_ = struct.pack("!H", self.crypto_data.data_len)
-        self.aead = "%s%s%s%s" % (sequence_, content_type_, version_, len_)
+        self.aead = sequence_ + content_type_ + version_ + len_
+
+    def to_bytes(self):
+        return self.crypto_data.data
 
     def __str__(self):
-        return self.crypto_data.data
+        return self.crypto_data.data # TODO: Broken since this returns a bytestring
 
 
 class IAEADCryptoContainer(CryptoContainer):
@@ -1277,7 +1290,10 @@ class IAEADCryptoContainer(CryptoContainer):
         return IAEADCryptoContainer.from_context(tls_ctx, ctx, crypto_data)
 
     def __str__(self):
-        return b"%s%s%s" % (self.crypto_data.data, struct.pack("!B", self.crypto_data.content_type), self.crypto_data.padding)
+        return b"%s%s%s" % (self.crypto_data.data, struct.pack("!B", self.crypto_data.content_type), self.crypto_data.padding) # TODO: Broken!
+    
+    def to_bytes(self):
+        return self.crypto_data.data + struct.pack("!B", self.crypto_data.content_type) + self.crypto_data.padding
 
 
 class CryptoContainerFactory(object):

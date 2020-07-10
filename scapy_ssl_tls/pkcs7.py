@@ -3,7 +3,7 @@
 # Author : janglin <http://japrogbits.blogspot.co.at>
 # http://japrogbits.blogspot.co.at/2011/02/using-encrypted-data-between-python-and.html
 import binascii
-import StringIO
+from io import StringIO
 
 
 class PKCS7Encoder(object):
@@ -59,8 +59,8 @@ class PKCS7Encoder(object):
 
     def get_padding(self, text):
         l = len(text)
-        output = StringIO.StringIO()
+        output = StringIO()
         val = self.k - (l % self.k)
-        for _ in xrange(val):
+        for _ in range(val):
             output.write('%02x' % val)
         return binascii.unhexlify(output.getvalue())
