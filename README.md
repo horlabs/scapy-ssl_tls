@@ -1,4 +1,7 @@
-[![Build Status](https://api.travis-ci.org/tintinweb/scapy-ssl_tls.svg?branch=master)](https://api.travis-ci.org/tintinweb/scapy-ssl_tls.svg?branch=master)
+Work on this fork just started, so most things are untested. 
+They might work, but there are only a few hotfixes right now, so crashes can occur.
+Some basics like the TLS handshake should be fixed.
+If you find any error or not working parts, feel free to open an issue.
 
 SSL/TLS layers for scapy the interactive packet manipulation tool.
 
