@@ -3,6 +3,8 @@ They might work, but there are only a few hotfixes right now, so crashes can occ
 Some basics like the TLS handshake should be fixed.
 If you find any error or not working parts, feel free to open an issue.
 
+[![Build Status](https://travis-ci.com/horlabs/scapy-ssl_tls.svg?branch=master)](https://travis-ci.com/horlabs/scapy-ssl_tls)
+
 SSL/TLS layers for scapy the interactive packet manipulation tool.
 
 Scapy-SSL/TLS
