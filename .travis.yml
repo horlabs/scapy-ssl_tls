@@ -1,5 +1,5 @@
-# pin to ubuntu 14.04 trusty tahr otherwise we end up with an outdated OpenSSL 1.0.1 14 Mar 2012 :/
-dist: trusty
+os: linux
+dist: bionic
 language: python
 python:
   - "3.7"
