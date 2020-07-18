@@ -341,7 +341,7 @@ TLS Session Context:
             cert = cert_list.certificates[0].data
             # If we have a default keystore, create an RSA keystore and populate it from data on the wire
             if isinstance(self.server_ctx.asym_keystore, tlsk.EmptyAsymKeystore):
-                self.server_ctx.asym_keystore = tlsk.RSAKeystore.from_der_certificate(str(cert))
+                self.server_ctx.asym_keystore = tlsk.RSAKeystore.from_der_certificate(bytes(cert))
             # Else keystore was assigned by user. Just add cert from the wire to the store
             else:
                 self.server_ctx.asym_keystore.certificate = str(cert)
@@ -532,7 +532,7 @@ TLS Session Context:
             self.__handle_ccs(pkt[tls.TLSChangeCipherSpec], origin=origin)
 
     def _generate_random_pms(self, version):
-        return "%s%s" % (struct.pack("!H", version), os.urandom(46))
+        return struct.pack("!H", version) + os.urandom(46)
 
     def get_encrypted_pms(self, pms=None):
         cleartext = pms or self.premaster_secret
@@ -660,9 +660,9 @@ TLS Session Context:
         for handshake in self._walk_handshake_msgs():
             if handshake.haslayer(up_to):
                 if include:
-                    digest.update(str(handshake))
+                    digest.update(bytes(handshake))
                 break
-            digest.update(str(handshake))
+            digest.update(bytes(handshake))
         return digest.digest()
 
     def get_client_signed_handshake_hash(self, hash_=SHA256.new(), pre_sign_hook=lambda x: x, sig=Sig_PKCS1_v1_5):
@@ -744,8 +744,8 @@ class TLSPRF(object):
 
             xored = []
             for i in range(num_bytes):
-                xored.append(chr(ord(md5_bytes[i]) ^ ord(sha1_bytes[i])))
-            bytes_ = "".join(xored)
+                xored.append(bytes([md5_bytes[i] ^ sha1_bytes[i]]))
+            bytes_ = b"".join(xored)
         return bytes_
 
     def _get_bytes(self, digest, key, label, random, num_bytes):
@@ -758,20 +758,20 @@ class TLSPRF(object):
 
 
 class TLS13PRF(object):
-    LABEL_EXTERNAL_PSK_BINDER_KEY = "external psk binder key"
-    LABEL_RESUMPTION_PSK_BINDER_KEY = "resumption psk binder key"
-    LABEL_EARLY_TRAFFIC_SECRET = "client early traffic secret"
-    LABEL_EARLY_EXPORTER_MASTER_SECRET = "early exporter master secret"
-    LABEL_CLIENT_HANDSHAKE_SECRET = "client handshake traffic secret"
-    LABEL_SERVER_HANDSHAKE_SECRET = "server handshake traffic secret"
-    LABEL_CLIENT_TRAFFIC_SECRET = "client application traffic secret"
-    LABEL_SERVER_TRAFFIC_SECRET = "server application traffic secret"
-    LABEL_EXPORTER_MASTER_SECRET = "exporter master secret"
-    LABEL_RESUMPTION_MASTER_SECRET = "resumption master secret"
-    LABEL_UPDATE_TRAFFIC_SECRET = "application traffic secret"
-    LABEL_WRITE_KEY = "key"
-    LABEL_WRITE_IV = "iv"
-    LABEL_FINISHED = "finished"
+    LABEL_EXTERNAL_PSK_BINDER_KEY = b"external psk binder key"
+    LABEL_RESUMPTION_PSK_BINDER_KEY = b"resumption psk binder key"
+    LABEL_EARLY_TRAFFIC_SECRET = b"client early traffic secret"
+    LABEL_EARLY_EXPORTER_MASTER_SECRET = b"early exporter master secret"
+    LABEL_CLIENT_HANDSHAKE_SECRET = b"client handshake traffic secret"
+    LABEL_SERVER_HANDSHAKE_SECRET = b"server handshake traffic secret"
+    LABEL_CLIENT_TRAFFIC_SECRET = b"client application traffic secret"
+    LABEL_SERVER_TRAFFIC_SECRET = b"server application traffic secret"
+    LABEL_EXPORTER_MASTER_SECRET = b"exporter master secret"
+    LABEL_RESUMPTION_MASTER_SECRET = b"resumption master secret"
+    LABEL_UPDATE_TRAFFIC_SECRET = b"application traffic secret"
+    LABEL_WRITE_KEY = b"key"
+    LABEL_WRITE_IV = b"iv"
+    LABEL_FINISHED = b"finished"
 
     def __init__(self, digest=SHA256):
         self.digest = digest
@@ -784,11 +784,14 @@ class TLS13PRF(object):
             self.len_ = struct.pack("!H", len_)
             if (len(label) > 255) or (len(hash_) > 255):
                 raise ValueError("All values must be 255 bytes or less")
-            self.label = "%s%s" % (self.LABEL_PREFIX, label)
+            self.label = self.LABEL_PREFIX + label
             self.hash_ = hash_
 
         def __str__(self):
             return "%s%s%s%s%s" % (self.len_, struct.pack("B", len(self.label)), self.label, struct.pack("B", len(self.hash_)), self.hash_)
+
+        def __bytes__(self):
+            return self.len_ + struct.pack("B", len(self.label)) + self.label + struct.pack("B", len(self.hash_)) + self.hash_
 
     class TLSPRFEarlySecrets(object):
         def __init__(self, early_secret, binder_key=b"", client_early_traffic_secret=b"", early_exporter_secret=b""):
@@ -852,10 +855,10 @@ class TLS13PRF(object):
 
     def expand_label(self, key, label, hash_, len_=None):
         len_ = len_ or self.digest_size
-        return HKDF(self.digest).expand(len_, str(TLS13PRF.HKDFLabel(len_, label, hash_)), key)
+        return HKDF(self.digest).expand(len_, bytes(TLS13PRF.HKDFLabel(len_, label, hash_)), key)
 
     def derive_early_secrets(self, psk=None, client_hello_hash=b"", resumption_psk=True):
-        psk = psk or "\x00" * self.digest_size
+        psk = psk or b"\x00" * self.digest_size
         binder_label = TLS13PRF.LABEL_RESUMPTION_PSK_BINDER_KEY if resumption_psk else TLS13PRF.LABEL_EXTERNAL_PSK_BINDER_KEY
         hkdf = HKDF(self.digest).extract(psk)
         if client_hello_hash == b"":
@@ -928,7 +931,7 @@ class HKDF(object):
         block = b""
         bytes_ = b""
         for i in range(1, n + 1):
-            block = HMAC.new(self.prk, "%s%s%s" % (block, info, struct.pack("B", i)), digestmod=self.digest).digest()
+            block = HMAC.new(self.prk, block + info + struct.pack("B", i), digestmod=self.digest).digest()
             bytes_ += block
         return bytes_[:len_]
 
@@ -999,7 +1002,7 @@ class StreamCryptoContext(CryptoContext):
         return self.encrypt(crypto_container)
 
     def encrypt(self, crypto_container):
-        ciphertext = self.enc_cipher.encrypt(str(crypto_container))
+        ciphertext = self.enc_cipher.encrypt(bytes(crypto_container))
         self.ctx.sequence += 1
         return ciphertext
 
@@ -1032,7 +1035,7 @@ class CBCCryptoContext(CryptoContext):
     def encrypt(self, crypto_container):
         if self.tls_ctx.requires_iv:
             self.__init_ciphers()
-        ciphertext = self.enc_cipher.encrypt(crypto_container.to_bytes())
+        ciphertext = self.enc_cipher.encrypt(bytes(crypto_container))
         self.ctx.sequence += 1
         return ciphertext
 
@@ -1068,7 +1071,7 @@ class EAEADCryptoContext(CryptoContext):
     def encrypt(self, crypto_container):
         self.__init_ciphers(self.get_nonce())
         self.enc_cipher.update(crypto_container.aead)
-        ciphertext, mac = self.enc_cipher.encrypt_and_digest(crypto_container.to_bytes())
+        ciphertext, mac = self.enc_cipher.encrypt_and_digest(bytes(crypto_container))
         bytes_ = struct.pack("!Q", self.ctx.nonce) + ciphertext + mac
         self.ctx.nonce += 1
         self.ctx.sequence += 1
@@ -1078,7 +1081,7 @@ class EAEADCryptoContext(CryptoContext):
         explicit_nonce = ciphertext[:self.explicit_iv_size]
         ciphertext, tag = ciphertext[self.explicit_iv_size:-self.tag_size], ciphertext[-self.tag_size:]
         # Create an empty Crypto container to retrieve AEAD data based on length of cleartext
-        crypto_data = CryptoData.from_context(self.tls_ctx, self.ctx, "\x00" * len(ciphertext))
+        crypto_data = CryptoData.from_context(self.tls_ctx, self.ctx, b"\x00" * len(ciphertext))
         crypto_data.content_type = content_type
         crypto_container = EAEADCryptoContainer.from_context(self.tls_ctx, self.ctx, crypto_data)
         self.__init_ciphers(self.get_nonce(explicit_nonce))
@@ -1090,7 +1093,7 @@ class EAEADCryptoContext(CryptoContext):
             warnings.warn("Verification of GCM tag failed: %s" % why)
         self.ctx.nonce = struct.unpack("!Q", explicit_nonce)[0]
         self.ctx.sequence += 1
-        return "%s%s%s" % (explicit_nonce, cleartext, tag)
+        return explicit_nonce + cleartext + tag
 
 
 class IAEADCryptoContext(CryptoContext):
@@ -1165,7 +1168,7 @@ class CryptoContainer(object):
         raise NotImplementedError()
 
     def __len__(self):
-        return len(str(self))
+        return len(bytes(self))
 
 
 class StreamCryptoContainer(CryptoContainer):
@@ -1189,11 +1192,8 @@ class StreamCryptoContainer(CryptoContainer):
         content_type_ = struct.pack("!B", self.crypto_data.content_type)
         version_ = struct.pack("!H", self.crypto_data.version)
         len_ = struct.pack("!H", self.crypto_data.data_len)
-        self.digest.update("%s%s%s%s%s" % (sequence_, content_type_, version_, len_, self.crypto_data.data))
+        self.digest.update(sequence_ + content_type_ + version_ + len_ + self.crypto_data.data)
         self.mac = self.digest.digest()
-
-    def __str__(self):
-        return "%s%s" % (self.crypto_data.data, self.mac) # TODO: Broken!
 
     def to_bytes(self):
         return self.crypto_data.data + self.mac
@@ -1238,10 +1238,7 @@ class CBCCryptoContainer(CryptoContainer):
         # trailing padding_length byte in the RFC
         self.padding = self.pkcs7.get_padding(self.crypto_data.data + self.mac + b"\xff")
 
-    def __str__(self):
-        return "%s%s%s%s%s" % (self.explicit_iv, self.crypto_data.data, self.mac, self.padding, self.padding_len) # TODO: Broken
-
-    def to_bytes(self):
+    def __bytes__(self):
         return self.explicit_iv + self.crypto_data.data + self.mac + self.padding + self.padding_len
 
 
@@ -1267,11 +1264,8 @@ class EAEADCryptoContainer(CryptoContainer):
         len_ = struct.pack("!H", self.crypto_data.data_len)
         self.aead = sequence_ + content_type_ + version_ + len_
 
-    def to_bytes(self):
+    def __bytes__(self):
         return self.crypto_data.data
-
-    def __str__(self):
-        return self.crypto_data.data # TODO: Broken since this returns a bytestring
 
 
 class IAEADCryptoContainer(CryptoContainer):
@@ -1351,7 +1345,7 @@ class NullHash(object):
         pass
 
     def digest(self):
-        return ""
+        return b""
 
     def hexdigest(self):
         return ""

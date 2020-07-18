@@ -43,7 +43,7 @@ class PKCS7Encoder(object):
         Remove the PKCS#7 padding from a text string
         """
         nl = len(text)
-        val = int(binascii.hexlify(text[-1]), 16)
+        val = text[-1]
         if val > self.k:
             raise ValueError('Input is not padded or padding is corrupt')
 
@@ -63,4 +63,5 @@ class PKCS7Encoder(object):
         val = self.k - (l % self.k)
         for _ in range(val):
             output.write('%02x' % val)
-        return binascii.unhexlify(output.getvalue())
+        ret = binascii.unhexlify(output.getvalue())
+        return ret

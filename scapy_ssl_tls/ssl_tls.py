@@ -119,7 +119,7 @@ class BEnumField(EnumField):
         """Extract an internal value from a string"""
         upack_data = s[:self.sz]
         # prepend struct.calcsize()-len(data) bytes to satisfy struct.unpack
-        upack_data = '\x00' * (struct.calcsize(self.fmt) - self.sz) + upack_data
+        upack_data = b'\x00' * (struct.calcsize(self.fmt) - self.sz) + upack_data
 
         return s[self.sz:], self.m2i(pkt, struct.unpack(self.fmt, upack_data)[0])
 
@@ -907,7 +907,7 @@ class TLSCertificateList(Packet):
     def guess_payload_class(self, payload):
         tls13_cert = TLS13Certificate(payload)
         tls10_cert = TLS10Certificate(payload)
-        certs_len = lambda certs: len(b"".join([str(cert) for cert in certs.certificates]))
+        certs_len = lambda certs: len(b"".join([bytes(cert) for cert in certs.certificates]))
         if tls13_cert.request_context_length == len(tls13_cert.request_context) and tls13_cert.length == certs_len(tls13_cert):
             return TLS13Certificate
         elif tls10_cert.length == certs_len(tls10_cert):
@@ -974,6 +974,10 @@ class TLSDecryptablePacket(PacketLengthFieldPayload):
                     self.fields_desc.append(field)
         except KeyError:
             self.tls_ctx = None
+        if "mac" in fields and "padding" in fields:
+            for field in self.decryptable_fields:
+                if field not in self.fields_desc:
+                    self.fields_desc.append(field)
         PacketLengthFieldPayload.__init__(self, *args, **fields)
 
     def pre_dissect(self, raw_bytes):
@@ -1547,7 +1551,7 @@ def tls_do_handshake(tls_socket, version, ciphers, extensions=[]):
 def tls_fragment_payload(pkt, record=None, size=2**14):
     if size <= 0:
         raise ValueError("Fragment size must be strictly positive")
-    payload = str(pkt)
+    payload = bytes(pkt)
     payloads = [payload[i: i + size] for i in range(0, len(payload), size)]
     if record is None:
         return payloads
